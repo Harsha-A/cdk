@@ -1,378 +1,401 @@
-# cdk
-aws cdk prep notes
+# CDK Interview Take-Home — Full Project Template
 
-
-Here you go — a **focused SDE-3 level AWS CDK interview cheat-sheet with 25 deep, high-signal technical questions and concise, high-quality answers.**
-This is specifically for **AWS CDK**, not general AWS, and is crafted for senior-level interviews.
+> A production-minded, interview-ready AWS CDK project template (TypeScript) with explanations, tests, CI, and deploy/run instructions. Use this as a starting point for take-home assignments or live coding interviews where you must show infra-as-code best practices, testing, and operational readiness.
 
 ---
 
-# **AWS CDK — SDE-3 Deep Technical Interview Cheat-Sheet (25 Q&A)**
+## Goals
+- Provide a minimal but realistic project that demonstrates CDK skills: a queue + lambda processing pipeline, monitoring, secure defaults, and unit tests.
+- Include explanations so you can talk through design choices in interviews.
 
 ---
 
-## **1. What is the difference between L1, L2, and L3 constructs in CDK?**
+## High-level architecture
 
-**Answer:**
-
-* **L1 (CFN Resources):** Auto-generated from CloudFormation spec; 1:1 mapping; verbose; all properties exposed.
-* **L2 (High-level abstractions):** Opinionated “default-safe” constructs with sensible defaults (e.g., `sqs.Queue`).
-* **L3 (Patterns):** Complex multi-resource patterns implementing best practices (e.g., `aws-solutions-constructs` like API GW → Lambda → DynamoDB).
-* **SDE-3 expectation:** choose L1 when you need full control or bleeding-edge features; L2 for 90% use cases; L3 for faster iteration.
+- API (optional) or producer (simulated) sends messages to SQS
+- SQS Queue with DLQ, encryption and long-polling
+- Lambda consumer triggered by SQS
+- CloudWatch alarms for queue depth & oldest message
 
 ---
 
-## **2. How does CDK synthesize infrastructure? What exactly is generated?**
+## Project structure
 
-**Answer:**
-CDK synthesizes your code into a **CloudFormation template (JSON)** using the **construct tree**. Every construct generates a CFN resource in the synthesized output.
-
-* Uses **jsii** to support multiple languages.
-* Output = `cdk.out/` containing templates and assets.
-* No infrastructure is created until **CloudFormation deploys** it.
-
----
-
-## **3. Explain the CDK construct tree and scope resolution.**
-
-**Answer:**
-Every construct has:
-
-* **scope** (parent)
-* **id** (unique within that parent)
-* **children**
-
-Construct tree forms a hierarchical structure. Logical IDs in CloudFormation derive from this tree.
-Understanding this is critical for correct resource isolation, environment scoping, and cross-stack references.
-
----
-
-## **4. What are CDK Aspects and when would you use them?**
-
-**Answer:**
-**Aspects** allow you to apply an operation across the entire construct tree (e.g., enforce tagging, security rules).
-Example use cases:
-
-* Enforce encryption on all S3 buckets.
-* Add standard monitoring to all Lambda functions.
-* Apply organization-wide governance.
-
----
-
-## **5. How do you write reusable constructs in CDK?**
-
-**Answer:**
-Create a class extending `Construct`, encapsulate related resources, expose outputs through properties, and accept configuration props.
-This allows:
-
-* Parameterized reuse
-* Testing
-* Versioning via construct libraries
-
----
-
-## **6. How does CDK handle deployments to multiple accounts/environments?**
-
-**Answer:**
-Use **Environments** (Account + Region):
-
-```ts
-env: { account: '123456789012', region: 'us-east-1' }
 ```
-
-For cross-account:
-
-* Use **CDK Bootstrap** (stores assets in bootstrap bucket)
-* Use **ARN-based IAM trust policies**
-* Use **SSM parameters or exports** for cross-account references
-  CF doesn't allow direct cross-account references → must use SSM or manual wiring.
-
----
-
-## **7. What is CDK Bootstrapping and why is it required?**
-
-**Answer:**
-Bootstrapping provisions:
-
-* S3 bucket for assets
-* ECR repository for Docker images
-* IAM roles for deployment
-
-Required for stacks using:
-
-* Lambda from asset
-* ECS images
-* File assets
-* `cdk deploy` with permissions
-
----
-
-## **8. What is a CDK Context? What problems does it solve?**
-
-**Answer:**
-Context stores environment-specific values used during synthesis (e.g., VPC lookups, availability zones).
-Prevents nondeterministic synthesis results and reduces API calls.
-Stored in `cdk.context.json`.
-
----
-
-## **9. What are Tokens in CDK?**
-
-**Answer:**
-Tokens represent values that are not known until deploy-time (e.g., ARNs, IDs).
-Lazy evaluation placeholders → CloudFormation resolves them.
-Example: `bucket.bucketArn`, `lambda.functionArn`.
-
----
-
-## **10. How do you avoid circular dependencies in CDK?**
-
-**Answer:**
-
-* Use **SSM parameters or Lambda environment variables** instead of direct references.
-* Avoid resources referencing each other’s attributes.
-* Split constructs into multiple stacks with clear boundaries.
-
----
-
-## **11. How do you unit test CDK code?**
-
-**Answer:**
-Use `assertions` module:
-
-* `Template.fromStack()`
-* `template.hasResourceProperties()`
-* Snapshot testing for templates
-* Tests validate IAM policies, resource properties, tags.
-
----
-
-## **12. How does CDK handle assets like Lambda code or Docker images?**
-
-**Answer:**
-During `cdk synth`:
-
-* Source code is packaged into `.zip`
-* Uploaded to bootstrap S3 bucket or ECR
-* CloudFormation template references those locations
-  Assets are tracked in `.cdk.staging` and `cdk.out`.
-
----
-
-## **13. Explain the difference between `CfnParameter`, `SSM parameter`, and CDK context.**
-
-**Answer:**
-
-* **CfnParameter:** dynamic *deploy-time* parameter (not recommended for most infra).
-* **SSM Parameter:** runtime/config parameter stored in SSM. Good for cross-env consistency.
-* **CDK Context:** *synth-time* configuration for environment lookups.
-
----
-
-## **14. How do you override low-level CloudFormation properties in CDK?**
-
-**Answer:**
-Use the `.node.defaultChild` or L1 constructs.
-Example:
-
-```ts
-(myBucket.node.defaultChild as s3.CfnBucket).property = ...
+cdk-interview-template/
+├── README.md
+├── package.json
+├── cdk.json
+├── tsconfig.json
+├── .gitignore
+├── bin/
+│   └── app.ts
+├── lib/
+│   └── stack.ts
+├── lambda/
+│   └── processor/
+│       └── index.ts
+├── test/
+│   └── stack.test.ts
+├── .github/workflows/ci.yml
+└── jest.config.js
 ```
 
 ---
 
-## **15. How do you manage secrets in CDK?**
-
-**Answer:**
-
-* Use **Secrets Manager** (`aws_secretsmanager.Secret`).
-* For Lambda env vars, never store plaintext.
-* Use AWS-managed KMS keys or CMKs.
-* Optionally use CDK `Secret.fromSecretArn()` for imports.
+## Prerequisites
+- Node.js 18+
+- AWS CLI configured (profile with deploy permissions)
+- AWS CDK v2 installed (`npm install -g aws-cdk`) or use `npx` in scripts
+- `cdk bootstrap` executed in target account/region
 
 ---
 
-## **16. How does CDK handle cross-stack references?**
+## Files (full content)
 
-**Answer:**
-CDK creates:
+### package.json
 
-* **CFN exports** in producer stack
-* **CFN imports** in consumer stack
+```json
+{
+  "name": "cdk-interview-template",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --require-approval never",
+    "destroy": "cdk destroy --force",
+    "test": "jest",
+    "lint": "eslint --ext .ts .",
+    "ci": "npm run build && npm run test && cdk synth"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.0.0",
+    "@types/node": "^18.0.0",
+    "aws-cdk-lib": "^2.1000.0",
+    "constructs": "^10.0.0",
+    "esbuild": "^0.18.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "ts-node": "^10.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "source-map-support": "^0.5.21"
+  }
+}
+```
 
-Limitations:
-
-* Only works in same region/account
-* Changing output names requires a replacement stack
-
-Alternative: **SSM Parameter Store** based wiring.
-
----
-
-## **17. How do you handle large Lambda layers or Docker Lambda in CDK?**
-
-**Answer:**
-Use:
-
-* `lambda.Code.fromDockerBuild()` for container Lambda
-* `lambda.LayerVersion` for layers
-
-CDK will upload the docker image to ECR automatically via the asset system.
-
----
-
-## **18. What are escape hatches in CDK?**
-
-**Answer:**
-Methods to directly manipulate underlying CFN resources when CDK doesn’t expose something:
-
-* Use L1 constructs directly
-* Use `CfnResource` overrides
-* Modify `defaultChild` of L2 constructs
-
-Used for edge cases.
+> **Note:** adjust versions to the latest stable ones in real repo.
 
 ---
 
-## **19. How do you enforce security best practices using CDK?**
+### tsconfig.json
 
-**Answer:**
-
-* Use Aspects (apply encryption rules)
-* Enable server-side encryption by default
-* Enforce TLS/HTTPS policies (e.g., API Gateway)
-* Use IAM scoped grants (`grantReadWrite`, etc.)
-* Use AWS Config rules via CDK
-
----
-
-## **20. How does CDK differ from Terraform?**
-
-**Answer:**
-
-* CDK uses **CloudFormation** → rollback safety, drift detection, stack dependency graph.
-* Terraform uses its own engine.
-* CDK provides **real programming languages** and abstractions (L2/L3).
-* CDK is strongly tied to AWS ecosystem.
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["es2020"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["**/*.ts"]
+}
+```
 
 ---
 
-## **21. How do you properly version and distribute custom constructs?**
+### cdk.json
 
-**Answer:**
-Package constructs as **npm packages (TS)** or **PyPI (Python)** using **jsii**.
-Version via SemVer; publish to internal registry; document APIs.
-Allows infra standardization across teams.
-
----
-
-## **22. What is the difference between `cdk deploy`, `cdk synth`, and `cdk diff`?**
-
-**Answer:**
-
-* **synth:** produce CF templates
-* **diff:** show changes vs deployed stack
-* **deploy:** apply changes → deploy stack via CloudFormation
+```json
+{
+  "app": "npx ts-node --prefer-ts-exts bin/app.ts",
+  "context": {
+    "@aws-cdk/core:newStyleStackSynthesis": true
+  }
+}
+```
 
 ---
 
-## **23. How do you enforce deterministic builds in CDK?**
+### .gitignore
 
-**Answer:**
-
-* Lock context (`cdk.context.json`)
-* Freeze dependency versions
-* Avoid API lookups in synth unless cached
-* Ensure consistent asset hashing
-
----
-
-## **24. Why is it risky to use CloudFormation parameters in CDK?**
-
-**Answer:**
-They break:
-
-* Deterministic synthesis
-* Asset resolution
-* Cross-stack references
-* CI automation
-  CDK philosophy → “inputs should be known at synth-time.”
+```
+node_modules/
+cdk.out/
+dist/
+.env
+.nyc_output/
+coverage/
+```
 
 ---
 
-## **25. How do you debug a failed CDK deployment?**
+### bin/app.ts
 
-**Answer:**
-Steps:
+```ts
+import 'source-map-support/register';
+import * as cdk from 'aws-cdk-lib';
+import { SqsLambdaStack } from '../lib/stack';
 
-1. Check **CloudFormation Events** for failed resource.
-2. Review synthesized template (`cdk.out`).
-3. Validate IAM permissions (common root cause).
-4. Check asset uploads (S3/ECR).
-5. Run `cdk diff` to ensure expected template.
-6. If needed, redeploy with `--rollback` disabled for inspection.
+const app = new cdk.App();
+
+new SqsLambdaStack(app, 'SqsLambdaStack', {
+  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+});
+```
+
+**Explanation:** Entrypoint that instantiates the stack. Using environment variables allows `cdk deploy` to infer the account/region.
 
 ---
-## AWS CDK CLI Commands Reference
 
-The AWS CDK CLI provides comprehensive commands for managing infrastructure as code. Here are all the essential commands:[1]
+### lib/stack.ts
 
-### Project Initialization & Setup
+```ts
+import * as cdk from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as alarms from 'aws-cdk-lib/aws-cloudwatch';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { Duration } from 'aws-cdk-lib';
+import * as path from 'path';
 
-**cdk init** - Creates a new CDK project from a template in the current directory, supporting multiple programming languages like TypeScript, Python, Java, and C#.[5][1]
+export interface SqsLambdaStackProps extends cdk.StackProps {}
 
-**cdk bootstrap** - Prepares an AWS environment for CDK deployments by deploying the CDKToolkit stack, which includes resources like S3 buckets for asset storage and IAM roles for deployment permissions.[7][1]
+export class SqsLambdaStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: SqsLambdaStackProps) {
+    super(scope, id, props);
 
-### Stack Management
+    // Dead-letter queue
+    const dlq = new sqs.Queue(this, 'DLQ', {
+      queueName: 'interview-dlq.fifo',
+      fifo: true,
+      retentionPeriod: Duration.days(14),
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
 
-**cdk list (ls)** - Lists all CDK stacks and their dependencies from your CDK application, with options to show environment details and stack dependencies.[3][1][7]
+    // Main FIFO queue (ordering example)
+    const queue = new sqs.Queue(this, 'MainQueue', {
+      queueName: 'interview-main.fifo',
+      fifo: true,
+      contentBasedDeduplication: true,
+      visibilityTimeout: Duration.seconds(60),
+      retentionPeriod: Duration.days(4),
+      receiveMessageWaitTime: Duration.seconds(20),
+      deadLetterQueue: {
+        queue: dlq,
+        maxReceiveCount: 5,
+      },
+      encryption: sqs.QueueEncryption.KMS_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
 
-**cdk synth** - Synthesizes CDK stacks into AWS CloudFormation templates without deploying them, useful for reviewing generated templates before deployment.[2][1]
+    // Lambda function
+    const fn = new lambda.Function(this, 'Processor', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'processor')),
+      timeout: Duration.seconds(30),
+      environment: {
+        QUEUE_URL: queue.queueUrl,
+      },
+    });
 
-**cdk deploy** - Deploys one or more CDK stacks into your AWS environment, creating or updating resources through CloudFormation.[1][7]
+    // Grant permissions
+    queue.grantConsumeMessages(fn);
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sqs:ChangeMessageVisibility'],
+      resources: ['*'],
+    }));
 
-**cdk destroy** - Deletes one or more CDK stacks from your AWS environment, removing all associated resources.[7][1]
+    // Event source mapping
+    fn.addEventSource(new (require('aws-cdk-lib/aws-lambda-event-sources').SqsEventSource)(queue, {
+      batchSize: 10,
+      maxBatchingWindow: Duration.seconds(30),
+      reportBatchItemFailures: true,
+    }));
 
-**cdk diff** - Performs a comparison to see infrastructure changes between your current CDK code and the deployed stack, showing what would change before deployment.[1][7]
+    // Alarms
+    const alarm = new alarms.Alarm(this, 'QueueDepthAlarm', {
+      metric: queue.metricApproximateNumberOfMessagesVisible(),
+      threshold: 50,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      alarmName: 'Interview-Queue-Depth-Alarm',
+    });
 
-### Resource Management
+    // Output
+    new cdk.CfnOutput(this, 'QueueUrl', { value: queue.queueUrl });
+    new cdk.CfnOutput(this, 'DlqUrl', { value: dlq.queueUrl });
+  }
+}
+```
 
-**cdk import** - Uses AWS CloudFormation resource imports to bring existing AWS resources into a CDK stack, enabling management of pre-existing infrastructure.[7][1]
+**Explanation (highlights):**
+- FIFO queue with content-based deduplication demonstrates ordering/dedupe knowledge.
+- Long polling & retention tuned for cost & durability.
+- KMS-managed encryption by default for secure data at rest.
+- DLQ with `maxReceiveCount` for failed messages.
+- Lambda function packaged as asset and given SQS consume permissions.
+- Event source mapping uses `reportBatchItemFailures` to handle partial failures.
+- CloudWatch alarm on visible messages shows operational monitoring.
 
-**cdk migrate** - Migrates AWS resources, CloudFormation stacks, and CloudFormation templates into a new CDK project, facilitating transition from other IaC approaches.[1][7]
+---
 
-**cdk rollback** - Rolls back a failed deployment to the previous stable state.[7]
+### lambda/processor/index.ts
 
-**cdk refactor** - Preserves deployed resources when refactoring code in your CDK application, allowing resource movement between stacks or within the same stack.[1][7]
+```ts
+import { SQSHandler } from 'aws-lambda';
 
-### Development & Monitoring
+export const handler: SQSHandler = async (event) => {
+  for (const record of event.Records) {
+    try {
+      console.log('Processing message:', record.messageId, record.body);
+      // Simulate processing
+      if (record.body.includes('fail')) {
+        throw new Error('Simulated processing failure');
+      }
+      // do real work here (call DB, external API, etc.)
+    } catch (err) {
+      console.error('Failed to process message', record.messageId, err);
+      // Throw to let Lambda mark this record as failed when using reportBatchItemFailures
+      throw err;
+    }
+  }
+};
+```
 
-**cdk watch** - Monitors a CDK app for deployable and hotswappable changes, automatically deploying updates during development.[7]
+**Explanation:** Keep handler small, idempotent, and instrumented. Throwing errors signals partial failures to Lambda when `reportBatchItemFailures` is enabled.
 
-**cdk drift** - Detects configuration drift for resources you define, manage, and deploy using CDK, identifying differences between expected and actual state.[1][7]
+---
 
-**cdk doctor** - Inspects and displays useful information about your local CDK project and development environment for troubleshooting.[7][1]
+### test/stack.test.ts
 
-### Configuration & Context
+```ts
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { SqsLambdaStack } from '../lib/stack';
 
-**cdk context** - Manages cached context values for your CDK application, storing and retrieving environment-specific information.[1]
+test('Stack synthesizes expected resources', () => {
+  const app = new cdk.App();
+  const stack = new SqsLambdaStack(app, 'TestStack');
+  const template = Template.fromStack(stack);
 
-**cdk flags** - Views and modifies feature flag configurations for the CDK CLI, controlling experimental or optional features.[1]
+  // SQS queue exists
+  template.hasResourceProperties('AWS::SQS::Queue', {
+    // check that attributes exist on synthesized queue
+  });
 
-### Maintenance & Information
+  // Lambda exists
+  template.resourceCountIs('AWS::Lambda::Function', 1);
+});
+```
 
-**cdk gc** - Garbage collects assets associated with the bootstrapped stack, cleaning up unused deployment artifacts.[7]
+**Explanation:** Basic unit test uses CFN template assertions to check resources. Add more granular tests for IAM and properties in interviews.
 
-**cdk metadata** - Displays metadata associated with a CDK stack, providing insights into stack composition.[1]
+---
 
-**cdk notices** - Displays relevant notices for your CDK application, including security advisories and deprecation warnings.[7][1]
+### jest.config.js
 
-**cdk acknowledge (ack)** - Acknowledges a notice by issue number and hides it from displaying again.[7][1]
+```js
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  testMatch: ['**/test/**/*.test.ts'],
+};
+```
 
-**cdk docs (doc)** - Opens CDK documentation in your browser for quick reference.[1]
+---
 
-**cdk cli-telemetry** - Enables or disables CLI telemetry collection for usage analytics.[7]
+### .github/workflows/ci.yml
 
-### Global Options
+```yaml
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-All commands support global options including `--app` (specify app command), `--profile` (AWS profile), `--region` (target region), `--verbose` (debug logging), `--help` (command help), and `--output` (synthesis output directory).
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: npm test
+      - name: CDK Synth
+        run: npx cdk synth
+```
+
+**Explanation:** CI does build/test/synth — never deploys to protect real accounts in interviews. For interviews you can also show a PR workflow that runs `cdk diff` on changes.
+
+---
+
+## How to run locally
+
+1. `npm install`
+2. `npm run build`
+3. `cdk bootstrap` in your target account/region (one-time)
+4. `cdk synth` to view synthesized template
+5. `cdk deploy` to deploy resources
+6. Use AWS Console or `aws` CLI to send messages to the queue and examine Lambda logs in CloudWatch
+
+---
+
+## Interview talking points & reasoning
+
+- **Why FIFO in this template?** Shows you understand ordering/deduplication trade-offs; for high-throughput without ordering you'd choose standard.
+- **Why content-based dedupe?** Simplifies dedupe without requiring the producer to set deduplication IDs.
+- **Why `reportBatchItemFailures`?** Allows partial success in a Lambda batch; must be combined with throwing errors per record.
+- **Why KMS-managed encryption?** Secure-by-default; ensures messages at rest are encrypted without needing a custom key policy.
+- **Why CloudWatch alarms?** Operational readiness — surface large backlogs quickly.
+- **Why RemovalPolicy.RETAIN?** Avoid accidental data loss in interview/demo environments; discuss alternatives like DESTROY for ephemeral sandbox stacks.
+
+---
+
+## Extensions & variations to demonstrate in interview
+
+- Add API Gateway + Producer Lambda to show E2E flow.
+- Add DynamoDB table and transactional flow with exactly-once semantics considerations.
+- Add SQS cross-account permissions and show `addToResourcePolicy` usage.
+- Use KMS CMK and show required key policy changes.
+- Add automated redrive job (Step Functions) to replay DLQ messages to a sandbox queue for reprocessing.
+
+---
+
+## Common pitfalls to call out
+
+- Visibility timeout misconfigured causing duplicates.
+- Lambda timeouts shorter than visibility timeout causing unexpected retries.
+- Forgetting KMS key permissions when using CMKs.
+- Not using long-polling causing excess API calls/costs.
+
+---
+
+## Final notes
+
+- Remember to **destroy** the stack after demoing (`cdk destroy`) if deployed in a personal account, or ensure resources use RemovalPolicy.DESTROY for ephemeral demos.
+- This template is intentionally opinionated in favor of secure defaults and operational readiness. In a timed interview you can remove extras to focus on required features.
+
+
+
+
+Tell me which next step and I’ll create it.
+
