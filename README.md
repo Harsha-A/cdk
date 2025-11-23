@@ -1,4 +1,4 @@
-Nice — I’ll give you a complete, **step-by-step, production-minded** AWS CDK (TypeScript) implementation that creates a Materials Management System (MMS) with:
+# Materials Management System (MMS) with:
 
 * DynamoDB (materials table)
 * REST API (API Gateway → Lambda) for CRUD of materials (material types, color variants, factories)
